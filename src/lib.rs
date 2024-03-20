@@ -20,14 +20,14 @@ pub fn derive(input: TokenStream) -> TokenStream {
         _ => unimplemented!("derive(Builder) only supports structs with named fields"),
     };
 
-    println!("{:#?}", fields);
+    // println!("{:#?}", fields);
 
     let builder_ident = format_ident!("{ident}Builder");
 
     let builder_fields = fields.iter().map(|field| {
         let field = field.clone();
         let id = field.ident.unwrap();
-        let ty = field.ty;
+        let ty = try_optional(&field.ty).or(std::option::Option::Some(field.ty));
 
         quote! {
             #id: std::option::Option<#ty>
@@ -61,10 +61,14 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let id = field.ident.unwrap();
         let err = format!("{id} not found");
 
-        quote! {
-            if self.#id.is_none() {
-                return std::result::Result::Err(#err.to_owned().into());
+        if try_optional(&field.ty).is_none() {
+            quote! {
+                if self.#id.is_none() {
+                    return std::result::Result::Err(#err.into());
+                }
             }
+        } else {
+            quote! {}
         }
     });
 
@@ -72,11 +76,16 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let field = field.clone();
         let id = field.ident.unwrap();
 
-        quote! {
-            #id: self.#id.clone().unwrap()
+        if try_optional(&field.ty).is_some() {
+            quote! {
+                #id: self.#id.clone()
+            }
+        } else {
+            quote! {
+                #id: self.#id.clone().unwrap()
+            }
         }
     });
-
 
     let output = quote! {
         impl #ident {
@@ -109,30 +118,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
 fn try_optional(ty: &syn::Type) -> std::option::Option<syn::Type> {
     let segments = match ty {
-        syn::Type::Path (
-            syn::TypePath {
-                path: syn::Path {
-                    segments,
-                    ..
-                },
-                ..
-            }
-        )
-        if segments.len() == 1 => segments.clone(),
+        syn::Type::Path(syn::TypePath {
+            path: syn::Path { segments, .. },
+            ..
+        }) if segments.len() == 1 => segments.clone(),
         _ => return std::option::Option::None,
     };
 
     let args = match &segments[0] {
         syn::PathSegment {
             ident,
-            arguments: syn::PathArguments::AngleBracketed(
-                syn::AngleBracketedGenericArguments {
-                    args,
-                    ..
-                }
-            )
-        }
-        if ident == "Option" && args.len() == 1 => args,
+            arguments:
+                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
+        } if ident == "Option" && args.len() == 1 => args,
         _ => return std::option::Option::None,
     };
 
