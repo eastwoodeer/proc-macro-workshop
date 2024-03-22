@@ -38,9 +38,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let each_builder_fields = fields.iter().map(|field| {
         let id = field.ident.clone().unwrap();
-
         if let Ok(Some(each)) = try_parse_builder_each(field) {
-            println!("============{each}===========");
+            let each = format_ident!("{}", each);
             quote! {
                 pub fn #each(&mut self, #each: String) -> &mut Self {
                     self.#id.push(#each);
@@ -48,12 +47,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 }
             }
         } else {
-            println!("============fail===========");
             quote! {}
         }
     });
-
-    // println!("{:#?}", fields);
 
     let builder_ident = format_ident!("{ident}Builder");
 
@@ -129,18 +125,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }
 
-        pub struct #builder_ident {
-            #(#builder_fields,)*
-        }
-
-        pub struct test;
-
         impl #builder_ident {
             #(#setters)*
 
-            pub struct test2;
-            #(#each_builder_fields,)*
-            pub struct test3;
+            pub struct #builder_ident {
+                #(#builder_fields,)*
+            }
 
             pub fn build(&mut self) -> std::result::Result<#ident, std::boxed::Box<dyn std::error::Error>> {
                 #(#build_checks;)*
@@ -149,6 +139,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #(#build_fields,)*
                 })
             }
+
+            #(#each_builder_fields)*
         }
     };
 
@@ -184,7 +176,6 @@ fn try_optional(ty: &syn::Type) -> std::option::Option<syn::Type> {
 fn try_parse_builder_each(
     field: &syn::Field,
 ) -> std::result::Result<std::option::Option<String>, syn::Error> {
-    println!("try_parse_builder_each");
     for attr in field.attrs.iter() {
         if attr.path().is_ident("builder") {
             let mut value: String = String::new();
